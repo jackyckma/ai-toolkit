@@ -160,16 +160,40 @@ class PythonParser:
             if name in self.name_bindings:
                 target_id = self.name_bindings[name]
                 
-                for line_number, caller_id in calls:
-                    # Create a relationship for the call
-                    relationship = Relationship(
-                        source_id=caller_id,
-                        target_id=target_id,
-                        type="calls",
-                        metadata={
-                            "line_numbers": [line_number]
-                        }
-                    )
+                for call_data in calls:
+                    # Handle both formats (backward compatibility)
+                    if len(call_data) == 3:
+                        # New format: (line_number, caller_id, call_info)
+                        line_number, caller_id, call_info = call_data
+                        
+                        # Create a relationship for the call
+                        relationship = Relationship(
+                            source_id=caller_id,
+                            target_id=target_id,
+                            type="calls",
+                            metadata={
+                                "line_numbers": [line_number],
+                                "call_type": call_info.get("call_type", "direct"),
+                                "args_count": len(call_info.get("args", [])),
+                                "kwargs_count": len(call_info.get("kwargs", {})),
+                                "args": call_info.get("args", []),
+                                "kwargs": call_info.get("kwargs", {})
+                            }
+                        )
+                    else:
+                        # Old format: (line_number, caller_id)
+                        line_number, caller_id = call_data
+                        
+                        # Create a relationship for the call
+                        relationship = Relationship(
+                            source_id=caller_id,
+                            target_id=target_id,
+                            type="calls",
+                            metadata={
+                                "line_numbers": [line_number]
+                            }
+                        )
+                    
                     try:
                         self.knowledge_graph.add_relationship(relationship)
                     except ValueError:
@@ -782,7 +806,7 @@ class PythonParser:
     
     def _analyze_function_calls(self, node: ast.FunctionDef, function_id: str) -> None:
         """
-        Analyze function calls in the function body.
+        Analyze function calls in the function body and create relationships.
         
         Args:
             node: Function definition node
@@ -792,18 +816,134 @@ class PythonParser:
         class CallVisitor(ast.NodeVisitor):
             def __init__(self, parser):
                 self.parser = parser
+                self.current_function_id = function_id
                 
             def visit_Call(self, node):
-                # Try to resolve the function being called
-                if isinstance(node.func, ast.Name):
-                    func_name = node.func.id
-                    # Track the call for later resolution
-                    if func_name not in self.parser.function_calls:
-                        self.parser.function_calls[func_name] = []
-                    self.parser.function_calls[func_name].append((node.lineno, function_id))
+                call_info = {
+                    "line": node.lineno,
+                    "caller_id": self.current_function_id
+                }
                 
-                # Continue visiting children
+                # Extract arguments for deeper analysis
+                args = []
+                for arg in node.args:
+                    if isinstance(arg, ast.Constant):
+                        args.append({"type": "constant", "value": str(arg.value)})
+                    elif isinstance(arg, ast.Name):
+                        args.append({"type": "variable", "name": arg.id})
+                    elif isinstance(arg, ast.Call):
+                        args.append({"type": "nested_call"})
+                    else:
+                        args.append({"type": "expression"})
+                
+                # Extract keyword arguments
+                kwargs = {}
+                for keyword in node.keywords:
+                    if isinstance(keyword.value, ast.Constant):
+                        kwargs[keyword.arg] = {"type": "constant", "value": str(keyword.value.value)}
+                    elif isinstance(keyword.value, ast.Name):
+                        kwargs[keyword.arg] = {"type": "variable", "name": keyword.value.id}
+                    else:
+                        kwargs[keyword.arg] = {"type": "expression"}
+                
+                call_info["args"] = args
+                call_info["kwargs"] = kwargs
+                
+                # Process different types of call patterns
+                if isinstance(node.func, ast.Name):
+                    # Simple function call: function_name()
+                    func_name = node.func.id
+                    call_info["name"] = func_name
+                    call_info["call_type"] = "direct"
+                    
+                    # Check if this is a reference to a known function
+                    if func_name in self.parser.name_bindings:
+                        target_id = self.parser.name_bindings[func_name]
+                        self._create_call_relationship(target_id, call_info)
+                    else:
+                        # Store for later resolution (might be defined later in the file)
+                        if func_name not in self.parser.function_calls:
+                            self.parser.function_calls[func_name] = []
+                        self.parser.function_calls[func_name].append((node.lineno, function_id, call_info))
+                
+                elif isinstance(node.func, ast.Attribute):
+                    # Method or attribute call: object.method() or module.function()
+                    call_info["call_type"] = "attribute"
+                    call_info["name"] = self._get_attribute_name(node.func)
+                    
+                    # Check for common patterns
+                    if isinstance(node.func.value, ast.Name):
+                        base_name = node.func.value.id
+                        attr_name = node.func.attr
+                        call_info["base"] = base_name
+                        call_info["attr"] = attr_name
+                        
+                        # Check if the base is a known import
+                        if base_name in self.parser.imported_modules:
+                            # This might be a call to an imported module's function
+                            module_id = self.parser.imported_modules[base_name]
+                            full_name = f"{base_name}.{attr_name}"
+                            
+                            # Look for the target function/method in the knowledge graph
+                            target_components = self.parser.knowledge_graph.get_component_by_name(full_name)
+                            if target_components:
+                                self._create_call_relationship(target_components[0].id, call_info)
+                            else:
+                                # Create a placeholder component for the external function
+                                external_component = Component(
+                                    name=full_name,
+                                    type="external_function",
+                                    metadata={
+                                        "module": base_name,
+                                        "function": attr_name,
+                                        "external": True
+                                    }
+                                )
+                                self.parser.knowledge_graph.add_component(external_component)
+                                self._create_call_relationship(external_component.id, call_info)
+                                
+                                # Also create a relationship to the module
+                                module_rel = Relationship(
+                                    source_id=external_component.id,
+                                    target_id=module_id,
+                                    type="defined_in",
+                                    metadata={}
+                                )
+                                try:
+                                    self.parser.knowledge_graph.add_relationship(module_rel)
+                                except ValueError:
+                                    pass
+                
+                # Continue visiting children (for nested calls)
                 self.generic_visit(node)
+                
+            def _get_attribute_name(self, node):
+                if isinstance(node.value, ast.Name):
+                    return f"{node.value.id}.{node.attr}"
+                elif isinstance(node.value, ast.Attribute):
+                    return f"{self._get_attribute_name(node.value)}.{node.attr}"
+                return node.attr
+                
+            def _create_call_relationship(self, target_id, call_info):
+                """Create a relationship for a function call."""
+                relationship = Relationship(
+                    source_id=self.current_function_id,
+                    target_id=target_id,
+                    type="calls",
+                    metadata={
+                        "line_numbers": [call_info["line"]],
+                        "call_type": call_info.get("call_type", "unknown"),
+                        "args_count": len(call_info.get("args", [])),
+                        "kwargs_count": len(call_info.get("kwargs", {})),
+                        "args": call_info.get("args", []),
+                        "kwargs": call_info.get("kwargs", {})
+                    }
+                )
+                try:
+                    self.parser.knowledge_graph.add_relationship(relationship)
+                except ValueError:
+                    # One of the components may not exist
+                    pass
         
         visitor = CallVisitor(self)
         visitor.visit(node)

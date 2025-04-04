@@ -1,14 +1,15 @@
 """
-Dependency analyzer for the AI-Native Development Toolkit.
+Dependency analysis module for Python code.
 
-This module implements dependency analysis capabilities for code components,
-detecting and categorizing relationships between different parts of the codebase.
+This module analyzes the dependencies between components in a knowledge graph,
+focusing on function calls, imports, and other relationships.
 """
 
 import logging
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any, Tuple, Union
+from collections import defaultdict
 
 from ..kb.component import Component
 from ..kb.relationship import Relationship
@@ -16,22 +17,299 @@ from ..kb.graph import KnowledgeGraph
 
 
 class DependencyAnalyzer:
-    """
-    Analyzes dependencies between components in the codebase.
-    
-    Uses the Knowledge Graph to detect and categorize relationships
-    between different parts of the code.
-    """
+    """Analyzes dependencies between components in a knowledge graph."""
     
     def __init__(self, knowledge_graph: KnowledgeGraph):
         """
         Initialize the dependency analyzer.
         
         Args:
-            knowledge_graph: Knowledge graph to use for analysis
+            knowledge_graph: The knowledge graph to analyze
         """
         self.knowledge_graph = knowledge_graph
-        self.logger = logging.getLogger("ai_toolkit.parser.dependency")
+        self.logger = logging.getLogger(__name__)
+        
+        # Cache for dependency information
+        self._import_dependencies: Dict[str, Set[str]] = {}
+        self._call_dependencies: Dict[str, Set[str]] = {}
+        self._component_dependencies: Dict[str, Dict[str, Set[str]]] = {}
+    
+    def analyze_imports(self) -> Dict[str, Set[str]]:
+        """
+        Analyze import dependencies in the knowledge graph.
+        
+        Returns:
+            A dictionary mapping module IDs to sets of imported module IDs
+        """
+        if self._import_dependencies:
+            return self._import_dependencies
+        
+        result = defaultdict(set)
+        
+        # Find all import relationships
+        relationships = self.knowledge_graph.get_relationships_by_type("imports")
+        
+        for rel in relationships:
+            source_id = rel.source_id
+            target_id = rel.target_id
+            
+            # Add the dependency
+            result[source_id].add(target_id)
+        
+        self._import_dependencies = result
+        return result
+    
+    def analyze_calls(self) -> Dict[str, Set[str]]:
+        """
+        Analyze function call dependencies in the knowledge graph.
+        
+        Returns:
+            A dictionary mapping function/method IDs to sets of called function/method IDs
+        """
+        if self._call_dependencies:
+            return self._call_dependencies
+        
+        result = defaultdict(set)
+        
+        # Find all call relationships
+        relationships = self.knowledge_graph.get_relationships_by_type("calls")
+        
+        for rel in relationships:
+            source_id = rel.source_id
+            target_id = rel.target_id
+            
+            # Add the dependency
+            result[source_id].add(target_id)
+        
+        self._call_dependencies = result
+        return result
+    
+    def analyze_component_dependencies(self, 
+                                      component_id: str, 
+                                      dependency_types: Optional[List[str]] = None,
+                                      max_depth: int = 1) -> Dict[str, Set[str]]:
+        """
+        Analyze dependencies for a specific component.
+        
+        Args:
+            component_id: ID of the component to analyze
+            dependency_types: Types of relationships to consider as dependencies
+                             (default: ["imports", "calls", "contains", "inherits"])
+            max_depth: Maximum depth to traverse in the dependency graph
+            
+        Returns:
+            A dictionary mapping relationship types to sets of component IDs
+        """
+        cache_key = f"{component_id}:{','.join(dependency_types or [])}:{max_depth}"
+        if cache_key in self._component_dependencies:
+            return self._component_dependencies[cache_key]
+        
+        if dependency_types is None:
+            dependency_types = ["imports", "calls", "contains", "inherits", "defined_in"]
+        
+        result = defaultdict(set)
+        visited = set()
+        
+        self._analyze_dependencies_recursive(
+            component_id, result, visited, dependency_types, max_depth, 0
+        )
+        
+        self._component_dependencies[cache_key] = result
+        return result
+    
+    def _analyze_dependencies_recursive(self,
+                                       component_id: str,
+                                       result: Dict[str, Set[str]],
+                                       visited: Set[str],
+                                       dependency_types: List[str],
+                                       max_depth: int,
+                                       current_depth: int) -> None:
+        """
+        Recursively analyze dependencies for a component.
+        
+        Args:
+            component_id: ID of the component to analyze
+            result: Result dictionary to update
+            visited: Set of visited component IDs to avoid cycles
+            dependency_types: Types of relationships to consider as dependencies
+            max_depth: Maximum depth to traverse
+            current_depth: Current depth in the traversal
+        """
+        if component_id in visited or current_depth > max_depth:
+            return
+        
+        visited.add(component_id)
+        
+        # Get outgoing relationships
+        relationships = self.knowledge_graph.get_relationships_by_source(component_id)
+        
+        for rel in relationships:
+            if rel.type in dependency_types:
+                result[rel.type].add(rel.target_id)
+                
+                # Recurse if we're not at max depth
+                if current_depth < max_depth:
+                    self._analyze_dependencies_recursive(
+                        rel.target_id, result, visited, 
+                        dependency_types, max_depth, current_depth + 1
+                    )
+    
+    def calculate_complexity(self, component_id: str) -> Dict[str, Any]:
+        """
+        Calculate complexity metrics for a component based on its dependencies.
+        
+        Args:
+            component_id: ID of the component to analyze
+            
+        Returns:
+            Dictionary with complexity metrics
+        """
+        # Initialize metrics
+        metrics = {
+            "incoming_dependencies": 0,
+            "outgoing_dependencies": 0,
+            "dependency_types": defaultdict(int),
+            "complexity_score": 0
+        }
+        
+        # Get the component
+        component = self.knowledge_graph.get_component_by_id(component_id)
+        if not component:
+            return metrics
+        
+        # Count outgoing dependencies
+        dependencies = self.analyze_component_dependencies(
+            component_id, ["imports", "calls", "inherits", "uses"]
+        )
+        
+        for dep_type, deps in dependencies.items():
+            metrics["outgoing_dependencies"] += len(deps)
+            metrics["dependency_types"][dep_type] = len(deps)
+        
+        # Count incoming dependencies (how many components depend on this one)
+        for rel_type in ["calls", "imports", "inherits", "uses"]:
+            relationships = self.knowledge_graph.get_relationships_by_target_and_type(
+                component_id, rel_type
+            )
+            metrics["incoming_dependencies"] += len(relationships)
+            metrics["dependency_types"][f"incoming_{rel_type}"] = len(relationships)
+        
+        # Calculate complexity score based on dependencies
+        # More dependencies = higher complexity
+        metrics["complexity_score"] = (
+            metrics["incoming_dependencies"] * 0.7 + 
+            metrics["outgoing_dependencies"] * 0.3
+        )
+        
+        # Adjust score based on component type
+        if component.type == "class":
+            # Check inheritance depth
+            inheritance_depth = self._calculate_inheritance_depth(component_id)
+            metrics["inheritance_depth"] = inheritance_depth
+            metrics["complexity_score"] += inheritance_depth * 0.5
+            
+            # Check number of methods
+            methods = self.knowledge_graph.get_relationships_by_source_and_type(
+                component_id, "contains"
+            )
+            method_count = len([r for r in methods 
+                               if self.knowledge_graph.get_component_by_id(r.target_id).type == "method"])
+            metrics["method_count"] = method_count
+            metrics["complexity_score"] += method_count * 0.2
+        
+        elif component.type in ["function", "method"]:
+            # Function complexity affected by number of parameters
+            if "parameters" in component.metadata:
+                param_count = len(component.metadata["parameters"])
+                metrics["parameter_count"] = param_count
+                metrics["complexity_score"] += param_count * 0.1
+            
+            # Function complexity affected by lines of code
+            if component.line_end and component.line_number:
+                loc = component.line_end - component.line_number + 1
+                metrics["lines_of_code"] = loc
+                metrics["complexity_score"] += loc * 0.05
+        
+        return metrics
+    
+    def _calculate_inheritance_depth(self, class_id: str) -> int:
+        """Calculate inheritance depth for a class."""
+        depth = 0
+        current_id = class_id
+        visited = set()
+        
+        while current_id and current_id not in visited:
+            visited.add(current_id)
+            
+            # Find inheritance relationships
+            relationships = self.knowledge_graph.get_relationships_by_source_and_type(
+                current_id, "inherits"
+            )
+            
+            if not relationships:
+                break
+                
+            # Use the first parent for depth calculation
+            current_id = relationships[0].target_id
+            depth += 1
+        
+        return depth
+    
+    def find_circular_dependencies(self) -> List[List[str]]:
+        """
+        Find circular dependencies in the knowledge graph.
+        
+        Returns:
+            List of circular dependency chains (lists of component IDs)
+        """
+        circular_deps = []
+        call_deps = self.analyze_calls()
+        
+        for component_id in call_deps:
+            path = []
+            visited = set()
+            self._find_circular_recursive(component_id, component_id, path, visited, call_deps, circular_deps)
+        
+        return circular_deps
+    
+    def _find_circular_recursive(self, 
+                                start_id: str, 
+                                current_id: str,
+                                path: List[str],
+                                visited: Set[str],
+                                dependencies: Dict[str, Set[str]],
+                                results: List[List[str]]) -> None:
+        """
+        Recursively search for circular dependencies.
+        
+        Args:
+            start_id: ID of the starting component
+            current_id: ID of the current component
+            path: Current dependency path
+            visited: Set of visited component IDs
+            dependencies: Dependency map
+            results: List to store found circular dependencies
+        """
+        if current_id in visited:
+            return
+            
+        visited.add(current_id)
+        path.append(current_id)
+        
+        for dep_id in dependencies.get(current_id, set()):
+            if dep_id == start_id:
+                # Found a circular dependency
+                circular_path = path.copy()
+                circular_path.append(start_id)
+                results.append(circular_path)
+            elif dep_id not in visited:
+                self._find_circular_recursive(
+                    start_id, dep_id, path, visited, dependencies, results
+                )
+        
+        # Backtrack
+        path.pop()
+        visited.remove(current_id)
     
     def analyze_dependencies(self) -> Dict[str, Dict[str, List[str]]]:
         """
@@ -230,77 +508,6 @@ class DependencyAnalyzer:
         
         # Remove duplicates and sort
         dependencies[module_name]["depends_on"] = sorted(list(set(dependencies[module_name]["depends_on"])))
-    
-    def find_circular_dependencies(self) -> List[List[str]]:
-        """
-        Find circular dependencies between modules.
-        
-        Returns:
-            List of circular dependency chains
-        """
-        self.logger.info("Analyzing circular dependencies")
-        
-        # First get the dependency graph
-        dependencies = self.analyze_dependencies()
-        
-        # Build adjacency list for dependency graph
-        adjacency_list = {}
-        for module_name, deps in dependencies.items():
-            adjacency_list[module_name] = deps["imports"]
-        
-        # Find cycles using DFS
-        def find_cycles_from_node(node, path=None, visited=None):
-            if path is None:
-                path = []
-            if visited is None:
-                visited = set()
-                
-            cycles = []
-            path.append(node)
-            visited.add(node)
-            
-            for neighbor in adjacency_list.get(node, []):
-                if neighbor in path:
-                    # Found a cycle
-                    cycle_start = path.index(neighbor)
-                    cycle = path[cycle_start:] + [neighbor]
-                    cycles.append(cycle)
-                elif neighbor not in visited:
-                    new_cycles = find_cycles_from_node(neighbor, path.copy(), visited.copy())
-                    cycles.extend(new_cycles)
-            
-            return cycles
-        
-        # Find all cycles
-        all_cycles = []
-        for node in adjacency_list:
-            cycles = find_cycles_from_node(node)
-            for cycle in cycles:
-                if cycle not in all_cycles:
-                    all_cycles.append(cycle)
-        
-        # Filter duplicates (cycles that are rotations of each other)
-        unique_cycles = []
-        for cycle in all_cycles:
-            # Convert to canonical form (smallest element first)
-            min_index = cycle.index(min(cycle))
-            canonical = cycle[min_index:] + cycle[:min_index]
-            
-            # Check if already in unique_cycles
-            is_duplicate = False
-            for existing in unique_cycles:
-                if len(existing) == len(canonical):
-                    min_index = existing.index(min(existing))
-                    existing_canonical = existing[min_index:] + existing[:min_index]
-                    if existing_canonical == canonical:
-                        is_duplicate = True
-                        break
-            
-            if not is_duplicate:
-                unique_cycles.append(cycle)
-        
-        self.logger.info(f"Found {len(unique_cycles)} circular dependencies")
-        return unique_cycles
     
     def get_component_dependencies(self, component_id: str) -> Dict[str, List[str]]:
         """

@@ -1,12 +1,12 @@
 """
-Parser module for the AI-Native Development Toolkit.
+Parser package for the AI-Native Development Toolkit.
 
-This module provides functionality to parse and analyze code,
-building a knowledge graph of components and relationships.
+This package provides code parsing and analysis functionality, extracting
+components, relationships, and other structural information from source code.
 """
 
-from .python import PythonParser
-from .dependency import DependencyAnalyzer
-from .extractor import CodeExtractor
+from ai_toolkit.parser.python import PythonParser
+from ai_toolkit.parser.dependency import DependencyAnalyzer
+from ai_toolkit.parser.extractor import ComponentExtractor
 
-__all__ = ["PythonParser", "DependencyAnalyzer", "CodeExtractor"]
+__all__ = ["PythonParser", "DependencyAnalyzer", "ComponentExtractor"]
