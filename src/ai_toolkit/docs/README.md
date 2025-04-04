@@ -15,8 +15,21 @@ curl -sSL https://raw.githubusercontent.com/jackyckma/ai-toolkit/main/scripts/in
 
 ### Manual Installation from GitHub
 ```bash
+# Clone the repository
 git clone https://github.com/jackyckma/ai-toolkit.git .ai-toolkit-temp
-cp -r .ai-toolkit-temp/src/ai_toolkit .ai-toolkit
+
+# Run the setup script (installs to .ai-toolkit by default)
+bash .ai-toolkit-temp/scripts/manual_setup.sh
+
+# Clean up
+rm -rf .ai-toolkit-temp
+```
+
+Alternatively, for full manual control:
+```bash
+# Clone and run setup with a custom directory
+git clone https://github.com/jackyckma/ai-toolkit.git .ai-toolkit-temp
+bash .ai-toolkit-temp/scripts/manual_setup.sh custom-dir
 rm -rf .ai-toolkit-temp
 ```
 

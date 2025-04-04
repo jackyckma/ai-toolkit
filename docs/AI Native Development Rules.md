@@ -305,12 +305,24 @@
 
 - Installation process:
   ```bash
-  # Option 1: Use the installation script
+  # Option 1: Use the installation script (recommended)
   curl -sSL https://raw.githubusercontent.com/jackyckma/ai-toolkit/main/scripts/install.sh | bash
   
-  # Option 2: Clone and install from GitHub
+  # Option 2: Manual installation from GitHub
+  # Step 1: Clone the repository
   git clone https://github.com/jackyckma/ai-toolkit.git .ai-toolkit-temp
-  cp -r .ai-toolkit-temp/src/ai_toolkit .ai-toolkit
+  
+  # Step 2: Run the manual setup script
+  bash .ai-toolkit-temp/scripts/manual_setup.sh
+  
+  # Step 3: Clean up
+  rm -rf .ai-toolkit-temp
+  
+  # Alternatively, for complete manual installation:
+  git clone https://github.com/jackyckma/ai-toolkit.git .ai-toolkit-temp
+  mkdir -p .ai-toolkit/{bin,kb,config,cache}
+  cp -r .ai-toolkit-temp/src/ai_toolkit/* .ai-toolkit/
+  bash .ai-toolkit-temp/scripts/manual_setup.sh .ai-toolkit
   rm -rf .ai-toolkit-temp
   ```
 

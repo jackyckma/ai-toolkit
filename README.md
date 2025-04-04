@@ -11,21 +11,29 @@ A command-line toolkit designed to enhance AI-led software development. This too
 
 ## Installation
 
+The toolkit is designed to be installed directly in your project repository:
+
 ```bash
 # Install directly using the installation script
 curl -sSL https://raw.githubusercontent.com/jackyckma/ai-toolkit/main/scripts/install.sh | bash
 ```
 
-Or for development:
+### Manual Installation
+
+If you prefer manual installation:
 
 ```bash
 # Clone the repository
-git clone https://github.com/jackyckma/ai-toolkit.git
-cd ai-toolkit
+git clone https://github.com/jackyckma/ai-toolkit.git .ai-toolkit-temp
 
-# Install in development mode
-pip install -e .
+# Run the setup script
+bash .ai-toolkit-temp/scripts/manual_setup.sh
+
+# Clean up
+rm -rf .ai-toolkit-temp
 ```
+
+This will install the toolkit in the `.ai-toolkit` directory within your project.
 
 ## Command Reference
 
