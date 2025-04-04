@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""
+AI-Native Development Toolkit
+Command-line entry point
+"""
+
+import sys
+from ai_toolkit.cli.main import main
+
+if __name__ == "__main__":
+    sys.exit(main())
