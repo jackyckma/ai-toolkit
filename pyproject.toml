@@ -25,5 +25,5 @@ packages = ["ai_toolkit"]
 package-dir = {"" = "src"}
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/ai-toolkit"
-"Bug Tracker" = "https://github.com/yourusername/ai-toolkit/issues" 
+"Homepage" = "https://github.com/jackyckma/ai-toolkit"
+"Bug Tracker" = "https://github.com/jackyckma/ai-toolkit/issues" 

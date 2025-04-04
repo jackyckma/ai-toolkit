@@ -13,14 +13,14 @@ A command-line toolkit designed to enhance AI-led software development. This too
 
 ```bash
 # Install directly using the installation script
-curl -sSL https://raw.githubusercontent.com/yourusername/ai-toolkit/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jackyckma/ai-toolkit/main/scripts/install.sh | bash
 ```
 
 Or for development:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ai-toolkit.git
+git clone https://github.com/jackyckma/ai-toolkit.git
 cd ai-toolkit
 
 # Install in development mode
@@ -196,4 +196,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+
+[project.urls]
+"Homepage" = "https://github.com/jackyckma/ai-toolkit"
+"Bug Tracker" = "https://github.com/jackyckma/ai-toolkit/issues" 

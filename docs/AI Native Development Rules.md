@@ -306,10 +306,10 @@
 - Installation process:
   ```bash
   # Option 1: Use the installation script
-  curl -sSL https://raw.githubusercontent.com/yourusername/ai-toolkit/main/scripts/install.sh | bash
+  curl -sSL https://raw.githubusercontent.com/jackyckma/ai-toolkit/main/scripts/install.sh | bash
   
   # Option 2: Clone and install from GitHub
-  git clone https://github.com/yourusername/ai-toolkit.git .ai-toolkit-temp
+  git clone https://github.com/jackyckma/ai-toolkit.git .ai-toolkit-temp
   cp -r .ai-toolkit-temp/src/ai_toolkit .ai-toolkit
   rm -rf .ai-toolkit-temp
   ```
