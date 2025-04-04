@@ -47,7 +47,8 @@ class DependencyAnalyzer:
         result = defaultdict(set)
         
         # Find all import relationships
-        relationships = self.knowledge_graph.get_relationships_by_type("imports")
+        all_relationships = list(self.knowledge_graph.get_all_relationships())
+        relationships = [rel for rel in all_relationships if rel.type == "imports"]
         
         for rel in relationships:
             source_id = rel.source_id
@@ -72,7 +73,8 @@ class DependencyAnalyzer:
         result = defaultdict(set)
         
         # Find all call relationships
-        relationships = self.knowledge_graph.get_relationships_by_type("calls")
+        all_relationships = list(self.knowledge_graph.get_all_relationships())
+        relationships = [rel for rel in all_relationships if rel.type == "calls"]
         
         for rel in relationships:
             source_id = rel.source_id
@@ -135,24 +137,42 @@ class DependencyAnalyzer:
             max_depth: Maximum depth to traverse
             current_depth: Current depth in the traversal
         """
-        if component_id in visited or current_depth > max_depth:
+        # Stop if we've visited this component already or exceeded the max depth
+        if component_id in visited:
             return
-        
+            
+        # Add to visited set to prevent cycles
         visited.add(component_id)
         
+        # If we're beyond the max depth, don't add any more dependencies
+        if current_depth > max_depth:
+            return
+            
         # Get outgoing relationships
-        relationships = self.knowledge_graph.get_relationships_by_source(component_id)
+        relationships = self.knowledge_graph.get_outgoing_relationships(component_id)
         
-        for rel in relationships:
-            if rel.type in dependency_types:
-                result[rel.type].add(rel.target_id)
+        # Filter for the requested relationship types
+        filtered_rels = [rel for rel in relationships if rel.type in dependency_types]
+        
+        # Process each relationship
+        for rel in filtered_rels:
+            # Add the target as a dependency of the specified type
+            result[rel.type].add(rel.target_id)
+            
+            # Only recurse if we haven't reached max depth yet
+            if current_depth < max_depth:
+                # Create a new visited set for the recursion to properly track paths
+                new_visited = visited.copy()
                 
-                # Recurse if we're not at max depth
-                if current_depth < max_depth:
-                    self._analyze_dependencies_recursive(
-                        rel.target_id, result, visited, 
-                        dependency_types, max_depth, current_depth + 1
-                    )
+                # Recursively process the target component
+                self._analyze_dependencies_recursive(
+                    rel.target_id, 
+                    result,
+                    new_visited,
+                    dependency_types,
+                    max_depth,
+                    current_depth + 1
+                )
     
     def calculate_complexity(self, component_id: str) -> Dict[str, Any]:
         """
@@ -173,7 +193,7 @@ class DependencyAnalyzer:
         }
         
         # Get the component
-        component = self.knowledge_graph.get_component_by_id(component_id)
+        component = self.knowledge_graph.components.get(component_id)
         if not component:
             return metrics
         
@@ -188,11 +208,11 @@ class DependencyAnalyzer:
         
         # Count incoming dependencies (how many components depend on this one)
         for rel_type in ["calls", "imports", "inherits", "uses"]:
-            relationships = self.knowledge_graph.get_relationships_by_target_and_type(
-                component_id, rel_type
-            )
-            metrics["incoming_dependencies"] += len(relationships)
-            metrics["dependency_types"][f"incoming_{rel_type}"] = len(relationships)
+            # Get incoming relationships of this type
+            incoming_rels = self.knowledge_graph.get_incoming_relationships(component_id)
+            incoming_rels = [rel for rel in incoming_rels if rel.type == rel_type]
+            metrics["incoming_dependencies"] += len(incoming_rels)
+            metrics["dependency_types"][f"incoming_{rel_type}"] = len(incoming_rels)
         
         # Calculate complexity score based on dependencies
         # More dependencies = higher complexity
@@ -209,11 +229,15 @@ class DependencyAnalyzer:
             metrics["complexity_score"] += inheritance_depth * 0.5
             
             # Check number of methods
-            methods = self.knowledge_graph.get_relationships_by_source_and_type(
-                component_id, "contains"
-            )
-            method_count = len([r for r in methods 
-                               if self.knowledge_graph.get_component_by_id(r.target_id).type == "method"])
+            methods = self.knowledge_graph.get_outgoing_relationships(component_id)
+            methods = [rel for rel in methods if rel.type == "contains"]
+            
+            method_count = 0
+            for rel in methods:
+                target = self.knowledge_graph.components.get(rel.target_id)
+                if target and target.type == "method":
+                    method_count += 1
+                    
             metrics["method_count"] = method_count
             metrics["complexity_score"] += method_count * 0.2
         
@@ -242,15 +266,14 @@ class DependencyAnalyzer:
             visited.add(current_id)
             
             # Find inheritance relationships
-            relationships = self.knowledge_graph.get_relationships_by_source_and_type(
-                current_id, "inherits"
-            )
+            relationships = self.knowledge_graph.get_outgoing_relationships(current_id)
+            inheritance_rels = [rel for rel in relationships if rel.type == "inherits"]
             
-            if not relationships:
+            if not inheritance_rels:
                 break
                 
             # Use the first parent for depth calculation
-            current_id = relationships[0].target_id
+            current_id = inheritance_rels[0].target_id
             depth += 1
         
         return depth
