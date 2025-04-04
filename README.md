@@ -208,4 +208,20 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 [project.urls]
 "Homepage" = "https://github.com/jackyckma/ai-toolkit"
-"Bug Tracker" = "https://github.com/jackyckma/ai-toolkit/issues" 
+"Bug Tracker" = "https://github.com/jackyckma/ai-toolkit/issues"
+
+## Using with Cursor AI
+
+For the best experience with Cursor AI and to ensure AI assistants can properly utilize this toolkit:
+
+1. Import the included **AI Native Development Rules** as a Project Rule in Cursor AI:
+   - In Cursor AI, go to Settings > Project Rules
+   - Click "Add Rule" and select the `AI Native Development Rules.md` file from the project root
+   - This enables AI assistants to understand how to properly initialize and use the toolkit
+
+2. Ensure the toolkit is installed in your project before asking the AI to use it:
+   ```bash
+   curl -sSL https://raw.githubusercontent.com/jackyckma/ai-toolkit/main/scripts/install.sh | bash
+   ```
+
+Once properly set up, Cursor AI can then help you leverage the toolkit's knowledge graph capabilities without additional prompting. 
