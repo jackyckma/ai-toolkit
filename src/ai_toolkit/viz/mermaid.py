@@ -52,6 +52,10 @@ class MermaidGenerator(DiagramGenerator):
             self.generate_module_diagram(output)
         elif diagram_type == "class":
             self.generate_class_diagram(output)
+        elif diagram_type == "dependency":
+            self.generate_dependency_diagram(output, component_id, max_depth)
+        elif diagram_type == "call":
+            self.generate_call_graph(output, component_id, max_depth)
         else:
             raise ValueError(f"Unsupported diagram type: {diagram_type}")
     
@@ -273,3 +277,214 @@ class MermaidGenerator(DiagramGenerator):
             return f"{component.name}()"
         else:
             return component.name
+    
+    def generate_dependency_diagram(self, 
+                                 output: TextIO, 
+                                 component_id: Optional[str] = None,
+                                 max_depth: int = 1) -> None:
+        """
+        Generate a dependency diagram in Mermaid format.
+        
+        Shows import and usage dependencies between components.
+        
+        Args:
+            output: Output file or stream
+            component_id: Optional ID of component to center on
+            max_depth: Maximum depth of relationships to include
+        """
+        # Write diagram header
+        output.write("```mermaid\ngraph LR\n")
+        
+        # Track included components and relationships
+        included_components: Set[str] = set()
+        included_relationships: List[Relationship] = []
+        
+        # Relationship types to include in the dependency view
+        dependency_types = ["imports", "uses", "depends_on", "requires"]
+        
+        if component_id:
+            # Start with the specified component
+            component = self.graph.components.get(component_id)
+            if not component:
+                output.write("    %% Component not found\n")
+                output.write("```\n")
+                return
+            
+            # Include the component
+            included_components.add(component_id)
+            
+            # Include dependencies up to max_depth
+            current_depth = 0
+            frontier = {component_id}
+            
+            while current_depth < max_depth and frontier:
+                next_frontier = set()
+                
+                for current_id in frontier:
+                    # Get relationships for this component
+                    outgoing_rels = self.graph.get_outgoing_relationships(current_id)
+                    incoming_rels = self.graph.get_incoming_relationships(current_id)
+                    
+                    # Process outgoing relationships (components this depends on)
+                    for rel in outgoing_rels:
+                        if rel.type in dependency_types:
+                            included_relationships.append(rel)
+                            included_components.add(rel.target_id)
+                            next_frontier.add(rel.target_id)
+                    
+                    # Process incoming relationships (components depending on this)
+                    for rel in incoming_rels:
+                        if rel.type in dependency_types:
+                            included_relationships.append(rel)
+                            included_components.add(rel.source_id)
+                            next_frontier.add(rel.source_id)
+                
+                frontier = next_frontier
+                current_depth += 1
+        else:
+            # Include all components
+            for component_id in self.graph.components:
+                included_components.add(component_id)
+            
+            # Include all dependency relationships
+            for rel in self.graph.get_all_relationships():
+                if rel.type in dependency_types:
+                    included_relationships.append(rel)
+        
+        # Generate component definitions
+        for component_id in included_components:
+            component = self.graph.components.get(component_id)
+            if not component:
+                continue
+            
+            # Generate component node with styling based on type
+            node_style = self._get_node_style(component.type)
+            label = self._format_label(component)
+            output.write(f"    {component.id}[{label}]{node_style}\n")
+        
+        # Generate dependency relationships
+        for rel in included_relationships:
+            # Generate relationship with styling based on type
+            arrow_style = self._get_arrow_style(rel.type)
+            output.write(f"    {rel.source_id} {arrow_style} {rel.target_id}\n")
+        
+        # Write styling
+        output.write("    %% Styling\n")
+        output.write("    classDef module fill:#cfe2f3,stroke:#1155cc,stroke-width:2px\n")
+        output.write("    classDef class fill:#d9ead3,stroke:#38761d,stroke-width:2px\n")
+        output.write("    classDef function fill:#fff2cc,stroke:#bf9000,stroke-width:2px\n")
+        
+        # Write diagram footer
+        output.write("```\n")
+    
+    def generate_call_graph(self, 
+                          output: TextIO, 
+                          component_id: Optional[str] = None,
+                          max_depth: int = 1) -> None:
+        """
+        Generate a call graph in Mermaid format.
+        
+        Shows function/method calls between components.
+        
+        Args:
+            output: Output file or stream
+            component_id: Optional ID of component to center on
+            max_depth: Maximum depth of relationships to include
+        """
+        # Write diagram header
+        output.write("```mermaid\ngraph LR\n")
+        
+        # Track included components and relationships
+        included_components: Set[str] = set()
+        included_relationships: List[Relationship] = []
+        
+        if component_id:
+            # Start with the specified component
+            component = self.graph.components.get(component_id)
+            if not component:
+                output.write("    %% Component not found\n")
+                output.write("```\n")
+                return
+            
+            # Include the component
+            included_components.add(component_id)
+            
+            # Include call relationships up to max_depth
+            current_depth = 0
+            frontier = {component_id}
+            visited = set()
+            
+            while current_depth < max_depth and frontier:
+                next_frontier = set()
+                
+                for current_id in frontier:
+                    if current_id in visited:
+                        continue
+                    
+                    visited.add(current_id)
+                    
+                    # Get outgoing calls
+                    outgoing_rels = self.graph.get_outgoing_relationships(current_id)
+                    outgoing_calls = [r for r in outgoing_rels if r.type == "calls"]
+                    
+                    # Get incoming calls
+                    incoming_rels = self.graph.get_incoming_relationships(current_id)
+                    incoming_calls = [r for r in incoming_rels if r.type == "calls"]
+                    
+                    # Process outgoing calls
+                    for rel in outgoing_calls:
+                        included_relationships.append(rel)
+                        included_components.add(rel.target_id)
+                        next_frontier.add(rel.target_id)
+                    
+                    # Process incoming calls
+                    for rel in incoming_calls:
+                        included_relationships.append(rel)
+                        included_components.add(rel.source_id)
+                        next_frontier.add(rel.source_id)
+                
+                frontier = next_frontier
+                current_depth += 1
+        else:
+            # Check for function or method components
+            func_types = ["function", "method"]
+            for component_id, component in self.graph.components.items():
+                if component.type in func_types:
+                    included_components.add(component_id)
+            
+            # Include all call relationships
+            for rel in self.graph.get_all_relationships():
+                if rel.type == "calls":
+                    included_relationships.append(rel)
+                    included_components.add(rel.source_id)
+                    included_components.add(rel.target_id)
+        
+        # Generate component definitions
+        for component_id in included_components:
+            component = self.graph.components.get(component_id)
+            if not component:
+                continue
+            
+            # Generate component node with styling based on type
+            node_style = self._get_node_style(component.type)
+            label = self._format_label(component)
+            output.write(f"    {component.id}[{label}]{node_style}\n")
+        
+        # Generate call relationships
+        for rel in included_relationships:
+            # Generate call relationship with metadata if available
+            arrow_label = ""
+            if "args_count" in rel.metadata:
+                args_count = rel.metadata["args_count"]
+                kwargs_count = rel.metadata.get("kwargs_count", 0)
+                arrow_label = f"|{args_count + kwargs_count} args|"
+            
+            output.write(f"    {rel.source_id} -->|calls{arrow_label}| {rel.target_id}\n")
+        
+        # Write styling
+        output.write("    %% Styling\n")
+        output.write("    classDef function fill:#fff2cc,stroke:#bf9000,stroke-width:2px\n")
+        output.write("    classDef method fill:#d5a6bd,stroke:#733d77,stroke-width:2px\n")
+        
+        # Write diagram footer
+        output.write("```\n")

@@ -8,6 +8,7 @@ A command-line toolkit designed to enhance AI-led software development. This too
 - **Code Analysis**: Extracts structure and relationships from Python code files
 - **Visualization Tools**: Generates human-readable diagrams from the knowledge graph
 - **Query Interface**: Provides powerful ways to explore code relationships
+- **Multi-Agent System**: Leverages specialized AI agents for code generation and testing tasks
 
 ## Installation
 
@@ -37,7 +38,7 @@ This will install the toolkit in the `.ai-toolkit` directory within your project
 
 ## Command Reference
 
-The toolkit provides four primary commands:
+The toolkit provides the following primary commands:
 
 ### 1. `init` - Initialize a Project
 
@@ -122,18 +123,20 @@ ai-toolkit query --component UserService --relationships --format json
 Creates visual diagrams from the knowledge graph.
 
 ```bash
-ai-toolkit visualize [--component NAME] [--format FORMAT] [--output FILE]
+ai-toolkit visualize [--component NAME] [--format FORMAT] [--output FILE] [--type TYPE]
 ```
 
 **What it does:**
 - Generates a Mermaid diagram from the knowledge graph
 - Can focus on a specific component and its relationships
 - Outputs to file or standard output
+- Supports different diagram types (component, module, class, dependency, call)
 
 **Options:**
 - `--component NAME`: Focus visualization on this component
 - `--format FORMAT`: Visualization format (currently only "mermaid", default)
 - `--output FILE`: Output file path (outputs to console if not specified)
+- `--type TYPE`: Type of diagram to generate (default: "component")
 
 **Examples:**
 ```bash
@@ -145,7 +148,43 @@ ai-toolkit visualize --component UserService
 
 # Save diagram to a file
 ai-toolkit visualize --output diagram.md
+
+# Generate a dependency diagram
+ai-toolkit visualize --type dependency --component DataProcessor
 ```
+
+### 5. `agent` - Use the Multi-Agent System
+
+Utilizes specialized AI agents to perform code generation and testing tasks.
+
+```bash
+ai-toolkit agent --task "TASK_DESCRIPTION" [--direct-mode MODE] [--output FILE]
+```
+
+**What it does:**
+- Uses a multi-agent system to generate code or tests based on natural language descriptions
+- Can work in coordinator mode (delegating to specialized agents) or direct mode (using a single agent)
+- Outputs structured results with extracted code blocks
+
+**Options:**
+- `--task TEXT`: Task description for the agent system (required)
+- `--direct-mode MODE`: Use a single agent directly (`code` or `test`)
+- `--output FILE`: Output file path for saving the results
+- `--context-file FILE`: JSON file with additional context for the task
+
+**Examples:**
+```bash
+# Use the coordinator to handle a complex task
+ai-toolkit agent --task "Create a Python function that calculates the factorial of a number" --output result.json
+
+# Use the code generation agent directly
+ai-toolkit agent --direct-mode code --task "Create a Python function that calculates the factorial of a number" --output result.json
+
+# Use the testing agent directly
+ai-toolkit agent --direct-mode test --task "Create tests for a function that calculates the factorial of a number" --output result.json
+```
+
+See [agent_system.md](./docs/agent_system.md) for detailed documentation on the multi-agent system.
 
 ## Example Workflow
 
@@ -163,6 +202,9 @@ ai-toolkit query --component MainController --relationships
 
 # 4. Generate a visualization
 ai-toolkit visualize --component MainController --output system-diagram.md
+
+# 5. Generate code using the multi-agent system
+ai-toolkit agent --direct-mode code --task "Create a Python function to parse JSON data from a file" --output parser.json
 ```
 
 ## Output Examples
@@ -192,11 +234,28 @@ graph TD
     class1 ==> method2[process_data()]
 ```
 
+### Multi-Agent System Output
+
+When using the `agent` command, you'll get JSON output like:
+
+```json
+{
+  "status": "success",
+  "message": "The full message from the agent",
+  "code": [
+    "def factorial(n):\n    if n == 0 or n == 1:\n        return 1\n    else:\n        return n * factorial(n-1)"
+  ],
+  "agent": "codegenerationagent",
+  "agent_id": "37c1dfd1-2f51-4306-a6c2-a19798675a2f"
+}
+```
+
 ## Troubleshooting
 
 - **"AI-Native Development Toolkit not initialized"**: Run `ai-toolkit init` first
 - **No components found**: Make sure you've run `ai-toolkit analyze` on your code
 - **Visualization is empty**: Check if components exist using `ai-toolkit query`
+- **Agent command fails**: Check your `.env` file for proper API keys
 
 ## Contributing
 
