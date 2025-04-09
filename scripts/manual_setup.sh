@@ -14,7 +14,7 @@ TARGET_DIR="${1:-.ai-toolkit}"
 echo "Setting up AI-Native Development Toolkit in $TARGET_DIR..."
 
 # Create directory structure
-mkdir -p "$TARGET_DIR"/{bin,cache,config,kb/queries}
+mkdir -p "$TARGET_DIR"/{bin,cache,config,kb/queries,logs}
 
 # Copy toolkit files if we're in the cloned repository
 if [ -d "src/ai_toolkit" ]; then
@@ -36,35 +36,25 @@ cat > "$TARGET_DIR"/config/config.json << EOF
 }
 EOF
 
-# Create a simple wrapper script
+# Create a proper executable wrapper script
 cat > "$TARGET_DIR"/bin/ai-toolkit << EOF
 #!/bin/bash
-# AI-Native Development Toolkit Wrapper
+# AI-Native Development Toolkit
 # Repository: https://github.com/jackyckma/ai-toolkit
 
-echo "AI-Native Development Toolkit"
-echo "Command: \$@"
+# Get the absolute path to the toolkit directory
+TOOLKIT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Process commands
-case "\$1" in
-    init)
-        echo "Initializing knowledge graph for project..."
-        ;;
-    analyze)
-        echo "Analyzing codebase..."
-        echo "Target: \${2:-current directory}"
-        ;;
-    query)
-        echo "Querying knowledge graph..."
-        ;;
-    visualize)
-        echo "Generating visualization..."
-        ;;
-    *)
-        echo "Usage: ai-toolkit [command]"
-        echo "Available commands: init, analyze, query, visualize"
-        ;;
-esac
+# Add the toolkit directory to the Python path
+export PYTHONPATH="\${TOOLKIT_DIR}:\${PYTHONPATH}"
+
+# Run the Python module with the arguments
+python3 -c "
+import sys
+sys.path.insert(0, '\${TOOLKIT_DIR}')
+from ai_toolkit.cli.main import main
+sys.exit(main())
+" "\$@"
 EOF
 
 chmod +x "$TARGET_DIR"/bin/ai-toolkit
